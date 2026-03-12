@@ -14,17 +14,17 @@
 - [ ] `npm run dev` starts on http://localhost:5173
 
 **Then Claude Code:**
-- [ ] `src/api/client.ts` — axios instance with Bearer token interceptor + 401 → logout redirect
-- [ ] `src/stores/authStore.ts` — zustand store: token + user, persisted to localStorage
-- [ ] `src/types/index.ts` — TypeScript interfaces for all models (match API Resources)
-- [ ] `src/api/auth.ts` — login(), logout(), me() functions
-- [ ] Folder structure created (api, components, pages, stores, hooks, types)
-- [ ] `App.tsx` with react-router-dom: protected routes + public routes
-- [ ] `pages/auth/Login.tsx` — form that calls login(), stores token
-- [ ] `npm run typecheck` passes with no errors
+- [x] `src/api/client.ts` — axios instance with Bearer token interceptor + 401 → logout redirect
+- [x] `src/stores/authStore.ts` — zustand store: token + user, persisted to localStorage
+- [x] `src/types/index.ts` — TypeScript interfaces for all models (match API Resources)
+- [x] `src/api/auth.ts` — login(), logout(), me() functions
+- [x] Folder structure created (api, components, pages, stores, hooks, types)
+- [x] `App.tsx` with react-router-dom: protected routes + public routes
+- [x] `pages/auth/Login.tsx` — form that calls login(), stores token
+- [x] `npm run typecheck` passes with no errors
 
 Notes:
-_
+Code reviewed — all checks pass. Auth store uses separate localStorage keys (`auth_token` for raw token, `auth-storage` for zustand persist). 401 interceptor calls `useAuthStore.getState().logout()` to clear both zustand and localStorage. No `any` types, no `window.location` usage, all API calls go through `src/api/`.
 
 ---
 
