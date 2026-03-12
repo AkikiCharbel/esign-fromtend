@@ -46,21 +46,21 @@ Code reviewed — all checks pass. pdfjs workerSrc uses `new URL(..., import.met
 
 ### TASK 1.7 — Template Builder
 **Owner: Claude Code**
-- [ ] `src/pages/templates/TemplateBuilder.tsx` created
-- [ ] Left sidebar: draggable field type palette (react-dnd)
-- [ ] Center: PdfViewer with droppable overlay per page
-- [ ] Fields drop correctly → stored as x%/y% percentages
-- [ ] Dropped fields render as labeled colored boxes at correct positions
-- [ ] Selected field shows resize handles + highlight
-- [ ] Right sidebar: field properties panel (label, required, font_size, multiline, options, signer_role)
-- [ ] Delete field button works
-- [ ] Zustand store manages builder state
-- [ ] "Save Template" → PUT /templates/:id/fields/sync
-- [ ] Success toast on save
-- [ ] `npm run typecheck` passes
+- [x] `src/pages/templates/TemplateBuilder.tsx` created
+- [x] Left sidebar: draggable field type palette (react-dnd)
+- [x] Center: PdfViewer with droppable overlay per page
+- [x] Fields drop correctly → stored as x%/y% percentages
+- [x] Dropped fields render as labeled colored boxes at correct positions
+- [x] Selected field shows resize handles + highlight
+- [x] Right sidebar: field properties panel (label, required, font_size, multiline, options, signer_role)
+- [x] Delete field button works
+- [x] Zustand store manages builder state
+- [x] "Save Template" → PUT /templates/:id/fields/sync
+- [x] Success toast on save
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Code reviewed — all checks pass. `builderStore.ts` uses `BuilderField` type with string IDs (temp UUIDs via `crypto.randomUUID()` before save, server IDs after). Drop positions calculated as `(dropX / rect.width) * 100`, rendered with `left: ${field.x}%`. Field move uses react-dnd `useDrag`/`useDrop` (type `FIELD_MOVE`) — supports cross-page moves. `useDrop` accepts both `FIELD` (new from palette) and `FIELD_MOVE` (reposition existing). Save calls `syncFields` (PUT) and `onSuccess` replaces temp IDs with server-returned IDs via `setFields()`. `useEffect` depends on `template?.id` with a `fieldsLoaded` ref guard to prevent infinite re-render. `syncFields` return typed as `{ fields: TemplateField[] }`. 8-handle resize works in percentages. Delete deselects in both store (`removeField`) and UI. No `any` types.
 
 ---
 

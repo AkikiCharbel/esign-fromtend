@@ -25,4 +25,4 @@ export const uploadPdf = (id: number, file: File) => {
 };
 
 export const syncFields = (id: number, fields: Omit<TemplateField, 'id' | 'template_id' | 'created_at' | 'updated_at'>[]) =>
-  client.put(`/templates/${id}/fields/sync`, { fields }).then((r) => r.data);
+  client.put<{ fields: TemplateField[] }>(`/templates/${id}/fields/sync`, { fields }).then((r) => r.data);
