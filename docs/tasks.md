@@ -68,17 +68,17 @@ Code reviewed — all checks pass. `builderStore.ts` uses `BuilderField` type wi
 
 ### TASK 2.1 — Document Creation UI
 **Owner: Claude Code**
-- [ ] `src/api/templates.ts` — list, get, uploadPdf functions
-- [ ] `src/api/documents.ts` — list, create, get, delete, addSigner, removeSigner functions
-- [ ] `src/pages/documents/DocumentCreate.tsx` — 3-step flow:
+- [x] `src/api/templates.ts` — list, get, uploadPdf functions
+- [x] `src/api/documents.ts` — list, create, get, delete, addSigner, removeSigner functions
+- [x] `src/pages/documents/DocumentCreate.tsx` — 3-step flow:
     - Step 1: pick template (grid with thumbnail)
     - Step 2: name + message + reply-to
     - Step 3: add/reorder signers
-- [ ] `src/pages/documents/DocumentShow.tsx` — preview + signer list + Send button
-- [ ] `npm run typecheck` passes
+- [x] `src/pages/documents/DocumentShow.tsx` — preview + signer list + Send button
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Code reviewed — all checks pass. DocumentCreate uses `useQuery` for templates (filtered to `status === 'active'`), `useMutation` for create + addSigner calls. Step state is local `useState`, not global. Signer drag-to-reorder uses native HTML drag events; `sign_order` derived from array index (`i + 1`) at submit time. DocumentShow uses `useMutation` for `createSubmission`; Send button disabled when `signers.length === 0`. Navigation via `useNavigate`. Forms use `react-hook-form` + `zod`. Review fixes applied: renamed `hasSenders` → `hasSigners` in DocumentShow, updated `Template.pdf_url` type to `string | null` with null guards added in DocumentCreate, TemplateBuilder, and TemplateIndex. No `any` types.
 
 ---
 

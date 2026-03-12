@@ -23,7 +23,7 @@ export interface Template {
   description: string | null;
   page_count: number;
   status: string;
-  pdf_url: string;
+  pdf_url: string | null;
   fields?: TemplateField[];
   created_at: string;
   updated_at: string;

@@ -613,7 +613,7 @@ export default function TemplateBuilder() {
             )}
           </div>
           <PdfViewer
-            pdfUrl={template.pdf_url}
+            pdfUrl={template.pdf_url ?? ''}
             overlayContent={overlayContent}
             onPageRenderSuccess={handlePageRender}
           />
