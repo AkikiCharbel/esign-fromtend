@@ -30,17 +30,17 @@ Code reviewed — all checks pass. Auth store uses separate localStorage keys (`
 
 ### TASK 1.6 — PDF Viewer Component
 **Owner: Claude Code**
-- [ ] `src/components/PdfViewer/PdfViewer.tsx` created
-- [ ] Renders PDF page by page using react-pdf `<Page>`
-- [ ] Each page: relative-positioned container
-- [ ] Each page: absolute-positioned overlay div (same dimensions)
-- [ ] Prop: `overlayContent: (page: number) => ReactNode`
-- [ ] Loading state shown while PDF loads
-- [ ] Error state handled gracefully
-- [ ] `npm run typecheck` passes
+- [x] `src/components/PdfViewer/PdfViewer.tsx` created
+- [x] Renders PDF page by page using react-pdf `<Page>`
+- [x] Each page: relative-positioned container
+- [x] Each page: absolute-positioned overlay div (same dimensions)
+- [x] Prop: `overlayContent: (page: number) => ReactNode`
+- [x] Loading state shown while PDF loads
+- [x] Error state handled gracefully
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Code reviewed — all checks pass. pdfjs workerSrc uses `new URL(..., import.meta.url)` (no CDN). Overlay container uses `pointerEvents: none` so only individual field children intercept clicks. `PageDimensions` interface exposes `originalWidth`/`originalHeight` alongside rendered dimensions to support percentage-based field positioning. `overlayContent` prop is optional. No `any` types.
 
 ---
 
