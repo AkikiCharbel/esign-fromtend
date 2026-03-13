@@ -138,3 +138,10 @@ export interface Media {
   created_at: string;
   updated_at: string;
 }
+
+export interface DashboardStats {
+  total_sent: number;
+  pending: number;
+  signed_this_week: number;
+  expired: number;
+}
