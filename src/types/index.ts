@@ -104,6 +104,7 @@ export interface Submission {
   document?: Document;
   field_values?: SubmissionFieldValue[];
   audit_logs?: AuditLog[];
+  media?: Media[];
   created_at: string;
   updated_at: string;
 }
@@ -113,6 +114,7 @@ export interface SubmissionFieldValue {
   submission_id: number;
   template_field_id: number;
   value: string;
+  template_field?: TemplateField;
   created_at: string;
   updated_at: string;
 }

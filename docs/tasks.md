@@ -84,21 +84,21 @@ Code reviewed — all checks pass. DocumentCreate uses `useQuery` for templates 
 
 ### TASK 2.2 — Submissions List + Send
 **Owner: Claude Code**
-- [ ] `src/api/submissions.ts` — list, create, get, resend, bulk functions
-- [ ] `src/pages/submissions/SubmissionIndex.tsx` — table with status badges, search, filter
-- [ ] Send flow: button on DocumentShow → POST /submissions → redirect to SubmissionIndex
-- [ ] Status badge colors: draft=gray, sent=blue, pending=yellow, questions=orange, signed=green
-- [ ] `npm run typecheck` passes
+- [x] `src/api/submissions.ts` — list, create, get, resend, bulk functions
+- [x] `src/pages/submissions/SubmissionIndex.tsx` — table with status badges, search, filter
+- [x] Send flow: button on DocumentShow → POST /submissions → redirect to SubmissionIndex
+- [x] Status badge colors: pending=yellow, sent=blue, viewed=indigo, signed=green, expired=red, declined=red
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Code reviewed — all checks pass. SubmissionIndex uses debounced search (300ms via `useMemo` ref + `setTimeout`) with `useEffect` cleanup on unmount. Status filter dropdown. Table rows clickable with hover highlight. SubmissionShow displays recipient info, audit log timeline with event icons/colors, field values table (renders `data:image` values as `<img>`), attachments with download links. Download signed PDF uses blob download via axios client (Bearer token in Authorization header, never in URL). Resend button with loading/success/error states. No `any` types, no hooks violations.
 
 ---
 
 ### TASK 2.3 — Public Signing Page
 **Owner: Claude Code**
-- [ ] `src/api/public.ts` — getSubmission(token), submitSigning(token, fieldValues), uploadAttachment(token, file), deleteAttachment(token, mediaId)
-- [ ] `src/pages/public/SigningPage.tsx`:
+- [x] `src/api/public.ts` — getSubmission(token), submitSigning(token, fieldValues), uploadAttachment(token, file), deleteAttachment(token, mediaId)
+- [x] `src/pages/public/SigningPage.tsx`:
     - Loads submission by token (no auth)
     - PdfViewer with interactive field inputs overlaid at correct positions
     - signature/initials: react-signature-canvas pad
@@ -110,12 +110,12 @@ _
     - Required fields highlighted red if unfilled on submit attempt
     - Attachment upload section (if document.has_attachments)
     - "Complete Signing" button → POST → success page with download link
-- [ ] Mobile responsive
-- [ ] Expiry/already-signed: shows appropriate error page
-- [ ] `npm run typecheck` passes
+- [x] Mobile responsive
+- [x] Expiry/already-signed: shows appropriate error page
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Code reviewed — all checks pass. SigningPage is fully public (no auth imports). Field positions rendered as CSS percentages (`left: ${field.x}%`). Required field validation runs before `submitSigning` — missing fields get red `2px solid #ef4444` border via `invalidFields` Set. Attachment validation blocks submit when `has_attachments` is true but no files uploaded (`attachmentError` state). Date fields auto-initialize to today via `useEffect`. Error handling: `axios.isAxiosError()` type guard differentiates 410 (expired) from 404 (not found). SignaturePad uses explicit `onAccept` callback (triggered by Accept button) — no auto-close on stroke end, multi-stroke signatures work correctly. `onClear` resets both canvas and parent state. Signature values submitted as base64 PNG (`toDataURL('image/png')`). Mobile: signature modal width `Math.min(400, window.innerWidth - 80)`. No `any` types.
 
 ---
 
@@ -135,16 +135,16 @@ _
 
 ### TASK 2.5 — Staff Submission Views
 **Owner: Claude Code**
-- [ ] `src/pages/submissions/SubmissionShow.tsx`:
+- [x] `src/pages/submissions/SubmissionShow.tsx`:
     - All field values filled by customer
     - Audit log timeline (sent → viewed → signed with timestamps + IP)
     - Download signed PDF button
     - Resend email button
     - Attachments section with download links
-- [ ] `npm run typecheck` passes
+- [x] `npm run typecheck` passes
 
 Notes:
-_
+Implemented as part of Task 2.2. See Task 2.2 notes for review details.
 
 ---
 
