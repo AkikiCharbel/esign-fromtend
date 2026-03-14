@@ -1,26 +1,63 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDrag, useDrop, DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
-import PdfViewer, { type PageDimensions } from '../../components/PdfViewer/PdfViewer';
-import { getTemplate, syncFields } from '../../api/templates';
+import axios from 'axios';
+import {
+  ArrowLeft,
+  Save,
+  Check,
+  GripVertical,
+  PenLine,
+  Type,
+  AlignLeft,
+  Calendar,
+  CheckSquare,
+  Circle,
+  ChevronDown,
+  Upload,
+  Trash2,
+  X,
+  RefreshCw,
+} from 'lucide-react';
+import PdfViewer from '../../components/PdfViewer/PdfViewer';
+import { getTemplate, syncFields, uploadPdf, updateTemplate } from '../../api/templates';
 import {
   useBuilderStore,
   templateFieldToBuilderField,
   builderFieldToSync,
   type BuilderField,
 } from '../../stores/builderStore';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
+import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/Spinner';
+import { cn } from '@/lib/utils';
+import { useToastStore } from '@/stores/toastStore';
 import type { FieldType } from '../../types';
 
-const FIELD_TYPES: { type: FieldType; label: string; color: string }[] = [
-  { type: 'signature', label: 'Signature', color: '#3b82f6' },
-  { type: 'initials', label: 'Initials', color: '#8b5cf6' },
-  { type: 'text', label: 'Text', color: '#10b981' },
-  { type: 'date', label: 'Date', color: '#f59e0b' },
-  { type: 'checkbox', label: 'Checkbox', color: '#ef4444' },
-  { type: 'radio', label: 'Radio', color: '#ec4899' },
-  { type: 'dropdown', label: 'Dropdown', color: '#06b6d4' },
+// --- Field type definitions with icons ---
+
+const FIELD_TYPE_ICON: Record<FieldType, React.ComponentType<{ className?: string }>> = {
+  signature: PenLine,
+  initials: Type,
+  text: AlignLeft,
+  date: Calendar,
+  checkbox: CheckSquare,
+  radio: Circle,
+  dropdown: ChevronDown,
+};
+
+const FIELD_TYPES: { type: FieldType; label: string }[] = [
+  { type: 'signature', label: 'Signature' },
+  { type: 'initials', label: 'Initials' },
+  { type: 'text', label: 'Text' },
+  { type: 'date', label: 'Date' },
+  { type: 'checkbox', label: 'Checkbox' },
+  { type: 'radio', label: 'Radio' },
+  { type: 'dropdown', label: 'Dropdown' },
 ];
 
 const DEFAULT_FIELD_SIZE: Record<FieldType, { width: number; height: number }> = {
@@ -33,13 +70,40 @@ const DEFAULT_FIELD_SIZE: Record<FieldType, { width: number; height: number }> =
   dropdown: { width: 20, height: 3 },
 };
 
+type FieldColorGroup = 'indigo' | 'amber' | 'emerald';
+
+function getFieldColorGroup(type: FieldType): FieldColorGroup {
+  if (type === 'signature' || type === 'initials') return 'indigo';
+  if (type === 'text' || type === 'date') return 'amber';
+  return 'emerald';
+}
+
+const FIELD_COLOR_STYLES: Record<FieldColorGroup, { bg: string; border: string; text: string }> = {
+  indigo: {
+    bg: 'var(--color-field-indigo-bg)',
+    border: 'var(--color-field-indigo-border)',
+    text: 'var(--color-field-indigo-text)',
+  },
+  amber: {
+    bg: 'var(--color-field-amber-bg)',
+    border: 'var(--color-field-amber-border)',
+    text: 'var(--color-field-amber-text)',
+  },
+  emerald: {
+    bg: 'var(--color-field-emerald-bg)',
+    border: 'var(--color-field-emerald-border)',
+    text: 'var(--color-field-emerald-text)',
+  },
+};
+
 function generateId(): string {
   return crypto.randomUUID();
 }
 
-// --- Left Panel: Draggable field palette ---
+// --- Left Panel: Draggable field pill ---
 
-function DraggableFieldType({ type, label, color }: { type: FieldType; label: string; color: string }) {
+function DraggableFieldType({ type, label }: { type: FieldType; label: string }) {
+  const Icon = FIELD_TYPE_ICON[type];
   const [{ isDragging }, drag] = useDrag(() => ({
     type: 'FIELD',
     item: { fieldType: type },
@@ -49,19 +113,15 @@ function DraggableFieldType({ type, label, color }: { type: FieldType; label: st
   return (
     <div
       ref={drag as unknown as React.Ref<HTMLDivElement>}
-      style={{
-        padding: '8px 12px',
-        marginBottom: '6px',
-        backgroundColor: color,
-        color: '#fff',
-        borderRadius: '4px',
-        cursor: 'grab',
-        opacity: isDragging ? 0.5 : 1,
-        fontSize: '14px',
-        fontWeight: 500,
-      }}
+      className={cn(
+        'flex items-center gap-2.5 rounded-md border border-border bg-surface-raised p-3 cursor-grab select-none transition-all',
+        'hover:bg-accent-subtle hover:border-accent',
+        isDragging && 'opacity-50 scale-95',
+      )}
     >
-      {label}
+      <Icon className="h-4 w-4 shrink-0 text-text-secondary" />
+      <span className="flex-1 text-sm font-medium text-text-primary">{label}</span>
+      <GripVertical className="h-4 w-4 shrink-0 text-text-tertiary" />
     </div>
   );
 }
@@ -71,17 +131,16 @@ function DraggableFieldType({ type, label, color }: { type: FieldType; label: st
 interface PageDropOverlayProps {
   pageNumber: number;
   templateId: number;
-  dimensions: PageDimensions | undefined;
 }
 
-function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlayProps) {
+function PageDropOverlay({ pageNumber, templateId }: PageDropOverlayProps) {
   const { fields, selectedFieldId, addField, updateField, setSelected } = useBuilderStore();
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const [, drop] = useDrop(() => ({
     accept: ['FIELD', 'FIELD_MOVE'],
     drop: (item: { fieldType?: FieldType; fieldId?: string }, monitor) => {
-      if (!overlayRef.current || !dimensions) return;
+      if (!overlayRef.current) return;
       const offset = monitor.getClientOffset();
       if (!offset) return;
       const rect = overlayRef.current.getBoundingClientRect();
@@ -91,7 +150,6 @@ function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlay
       const yPercent = (dropY / rect.height) * 100;
 
       if (item.fieldId) {
-        // Moving an existing field
         const existing = fields.find((f) => f.id === item.fieldId);
         if (!existing) return;
         updateField(item.fieldId, {
@@ -100,7 +158,6 @@ function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlay
           page: pageNumber,
         });
       } else if (item.fieldType) {
-        // Creating a new field from palette
         const size = DEFAULT_FIELD_SIZE[item.fieldType];
         const newField: BuilderField = {
           id: generateId(),
@@ -123,7 +180,7 @@ function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlay
         setSelected(newField.id);
       }
     },
-  }), [dimensions, fields, templateId, pageNumber, addField, updateField, setSelected]);
+  }), [fields, templateId, pageNumber, addField, updateField, setSelected]);
 
   const pageFields = fields.filter((f) => f.page === pageNumber);
 
@@ -140,6 +197,7 @@ function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlay
         width: '100%',
         height: '100%',
         pointerEvents: 'auto',
+        zIndex: 10,
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) setSelected(null);
@@ -156,6 +214,9 @@ function PageDropOverlay({ pageNumber, templateId, dimensions }: PageDropOverlay
 
 function FieldBox({ field, selected }: { field: BuilderField; selected: boolean }) {
   const { setSelected, updateField } = useBuilderStore();
+  const Icon = FIELD_TYPE_ICON[field.type];
+  const colorGroup = getFieldColorGroup(field.type);
+  const colors = FIELD_COLOR_STYLES[colorGroup];
 
   const [{ isDragging }, dragRef] = useDrag(() => ({
     type: 'FIELD_MOVE',
@@ -173,8 +234,6 @@ function FieldBox({ field, selected }: { field: BuilderField; selected: boolean 
     startFieldH: number;
     parentRect: DOMRect;
   } | null>(null);
-
-  const fieldColor = FIELD_TYPES.find((ft) => ft.type === field.type)?.color ?? '#888';
 
   const handleMouseDown = useCallback(
     (handle: string, e: React.MouseEvent) => {
@@ -263,24 +322,34 @@ function FieldBox({ field, selected }: { field: BuilderField; selected: boolean 
         top: `${field.y}%`,
         width: `${field.width}%`,
         height: `${field.height}%`,
-        backgroundColor: `${fieldColor}22`,
-        border: `2px solid ${selected ? '#2563eb' : fieldColor}`,
-        borderRadius: '2px',
-        cursor: 'move',
+        backgroundColor: colors.bg,
+        border: `1.5px solid ${colors.border}`,
+        borderRadius: '4px',
+        cursor: 'grab',
         boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        gap: '3px',
+        padding: '0 4px',
         fontSize: '10px',
-        color: fieldColor,
-        fontWeight: 600,
+        color: colors.text,
+        fontWeight: 500,
         overflow: 'hidden',
         whiteSpace: 'nowrap',
         userSelect: 'none',
         opacity: isDragging ? 0.4 : 1,
+        boxShadow: isDragging ? '0 2px 8px rgba(0,0,0,0.3)' : undefined,
+        outline: selected ? `2px solid var(--color-accent)` : undefined,
+        outlineOffset: '1px',
       }}
     >
-      {field.label}
+      <Icon className="h-[11px] w-[11px] shrink-0" />
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        {field.label}
+      </span>
+      {field.required && (
+        <span style={{ color: 'rgb(239, 68, 68)', marginLeft: 1, flexShrink: 0 }}>*</span>
+      )}
       {selected &&
         handles.map((h) => (
           <div
@@ -290,10 +359,11 @@ function FieldBox({ field, selected }: { field: BuilderField; selected: boolean 
               position: 'absolute',
               width: 8,
               height: 8,
-              backgroundColor: '#2563eb',
-              border: '1px solid #fff',
-              borderRadius: '50%',
+              backgroundColor: 'var(--color-accent)',
+              border: '1px solid var(--color-background)',
+              borderRadius: '1px',
               pointerEvents: 'auto',
+              zIndex: 10,
               ...handlePositions[h],
             }}
           />
@@ -310,94 +380,106 @@ function FieldProperties() {
 
   if (!field) {
     return (
-      <div style={{ padding: '16px', color: '#888', fontSize: '14px' }}>
-        Select a field to edit its properties
+      <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+        <p className="text-sm text-text-tertiary">Select a field to edit</p>
       </div>
     );
   }
 
+  const Icon = FIELD_TYPE_ICON[field.type];
+  const showFontSize = field.type === 'text' || field.type === 'date';
   const showMultiline = field.type === 'text';
   const showOptions = field.type === 'radio' || field.type === 'dropdown';
 
   return (
-    <div style={{ padding: '16px', fontSize: '14px' }}>
-      <h3 style={{ margin: '0 0 16px', fontSize: '16px' }}>
-        Field Properties
-      </h3>
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex items-center gap-2.5 px-4 py-3">
+        <Icon className="h-4 w-4 text-text-secondary" />
+        <span className="flex-1 text-sm font-semibold text-text-primary capitalize">
+          {field.type}
+        </span>
+        <button
+          onClick={() => setSelected(null)}
+          aria-label="Close"
+          className="rounded p-1 text-text-tertiary hover:bg-surface-raised hover:text-text-primary transition-colors cursor-pointer"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <Separator />
 
-      <label style={{ display: 'block', marginBottom: '12px' }}>
-        <span style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Label</span>
-        <input
-          type="text"
-          value={field.label}
-          onChange={(e) => updateField(field.id, { label: e.target.value })}
-          style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
-        />
-      </label>
+      {/* Form */}
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">Label</label>
+          <Input
+            value={field.label}
+            onChange={(e) => updateField(field.id, { label: e.target.value })}
+          />
+        </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
-        <input
-          type="checkbox"
-          checked={field.required}
-          onChange={(e) => updateField(field.id, { required: e.target.checked })}
-        />
-        <span style={{ fontWeight: 500 }}>Required</span>
-      </label>
-
-      <label style={{ display: 'block', marginBottom: '12px' }}>
-        <span style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Font Size</span>
-        <input
-          type="number"
-          value={field.font_size}
-          min={8}
-          max={72}
-          onChange={(e) => updateField(field.id, { font_size: Number(e.target.value) })}
-          style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
-        />
-      </label>
-
-      {showMultiline && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
+        <label className="flex cursor-pointer items-center gap-2.5">
           <input
             type="checkbox"
-            checked={field.multiline}
-            onChange={(e) => updateField(field.id, { multiline: e.target.checked })}
+            checked={field.required}
+            onChange={(e) => updateField(field.id, { required: e.target.checked })}
+            className="h-4 w-4 rounded border-border accent-accent cursor-pointer"
           />
-          <span style={{ fontWeight: 500 }}>Multiline</span>
+          <span className="text-sm font-medium text-text-primary">Required</span>
         </label>
-      )}
 
-      <label style={{ display: 'block', marginBottom: '12px' }}>
-        <span style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Signer Role</span>
-        <input
-          type="text"
-          value={field.signer_role}
-          onChange={(e) => updateField(field.id, { signer_role: e.target.value })}
-          style={{ width: '100%', padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px', boxSizing: 'border-box' }}
-        />
-      </label>
+        {showFontSize && (
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-text-secondary">Font Size</label>
+            <Input
+              type="number"
+              value={field.font_size}
+              min={8}
+              max={72}
+              onChange={(e) => updateField(field.id, { font_size: Number(e.target.value) })}
+            />
+          </div>
+        )}
 
-      {showOptions && <OptionsEditor fieldId={field.id} options={field.options ?? []} />}
+        {showMultiline && (
+          <label className="flex cursor-pointer items-center gap-2.5">
+            <input
+              type="checkbox"
+              checked={field.multiline}
+              onChange={(e) => updateField(field.id, { multiline: e.target.checked })}
+              className="h-4 w-4 rounded border-border accent-accent cursor-pointer"
+            />
+            <span className="text-sm font-medium text-text-primary">Multiline</span>
+          </label>
+        )}
 
-      <button
-        onClick={() => {
-          removeField(field.id);
-          setSelected(null);
-        }}
-        style={{
-          marginTop: '16px',
-          width: '100%',
-          padding: '8px',
-          backgroundColor: '#ef4444',
-          color: '#fff',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: 'pointer',
-          fontWeight: 500,
-        }}
-      >
-        Delete Field
-      </button>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-text-secondary">Signer Role</label>
+          <Input
+            value={field.signer_role}
+            onChange={(e) => updateField(field.id, { signer_role: e.target.value })}
+            placeholder="e.g. Customer, Witness"
+          />
+        </div>
+
+        {showOptions && <OptionsEditor fieldId={field.id} options={field.options ?? []} />}
+      </div>
+
+      {/* Delete button - sticky bottom */}
+      <div className="border-t border-border p-4">
+        <Button
+          variant="danger"
+          className="w-full"
+          onClick={() => {
+            removeField(field.id);
+            setSelected(null);
+          }}
+        >
+          <Trash2 className="h-4 w-4" />
+          Delete Field
+        </Button>
+      </div>
     </div>
   );
 }
@@ -419,67 +501,223 @@ function OptionsEditor({ fieldId, options }: { fieldId: string; options: string[
   };
 
   return (
-    <div style={{ marginBottom: '12px' }}>
-      <span style={{ display: 'block', marginBottom: '4px', fontWeight: 500 }}>Options</span>
-      <div style={{ display: 'flex', gap: '4px', marginBottom: '8px' }}>
-        <input
-          type="text"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              addOption();
-            }
-          }}
-          placeholder="Add option..."
-          style={{ flex: 1, padding: '6px 8px', border: '1px solid #d1d5db', borderRadius: '4px' }}
-        />
-        <button
-          onClick={addOption}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#3b82f6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-          }}
-        >
-          Add
-        </button>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-        {options.map((opt, i) => (
-          <span
-            key={i}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '2px 8px',
-              backgroundColor: '#e5e7eb',
-              borderRadius: '12px',
-              fontSize: '12px',
-            }}
-          >
-            {opt}
-            <button
-              onClick={() => removeOption(i)}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 0,
-                fontSize: '14px',
-                lineHeight: 1,
-                color: '#6b7280',
-              }}
+    <div className="space-y-2">
+      <label className="text-xs font-medium text-text-secondary">Options</label>
+      <Input
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            addOption();
+          }
+        }}
+        placeholder="Type option + Enter"
+      />
+      {options.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {options.map((opt, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 rounded-md bg-surface-raised border border-border px-2 py-0.5 text-xs text-text-secondary"
             >
-              x
-            </button>
-          </span>
-        ))}
+              {opt}
+              <button
+                onClick={() => removeOption(i)}
+                className="ml-0.5 text-text-tertiary hover:text-text-primary cursor-pointer bg-transparent border-none p-0 leading-none"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Inline editable title ---
+
+function EditableTitle({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave: (name: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) {
+      onSave(trimmed);
+    } else {
+      setDraft(value);
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+        className="bg-transparent border-none text-lg font-semibold text-text-primary outline-none focus:ring-0 p-0 m-0 w-64"
+      />
+    );
+  }
+
+  return (
+    <h1
+      onClick={() => setEditing(true)}
+      className="text-lg font-semibold text-text-primary cursor-pointer hover:text-accent transition-colors"
+      title="Click to edit"
+    >
+      {value}
+    </h1>
+  );
+}
+
+// --- Inline editable description ---
+
+function EditableDescription({
+  value,
+  onSave,
+}: {
+  value: string | null;
+  onSave: (description: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? '');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setDraft(value ?? '');
+  }, [value]);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+    }
+  }, [editing]);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed !== (value ?? '')) {
+      onSave(trimmed);
+    } else {
+      setDraft(value ?? '');
+    }
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') {
+            setDraft(value ?? '');
+            setEditing(false);
+          }
+        }}
+        className="bg-transparent border-none text-xs text-text-secondary outline-none focus:ring-0 p-0 m-0 w-64"
+        placeholder="Add a description..."
+      />
+    );
+  }
+
+  return (
+    <p
+      onClick={() => setEditing(true)}
+      className="text-xs text-text-tertiary cursor-pointer hover:text-text-secondary transition-colors"
+      title="Click to edit"
+    >
+      {value || 'Add description...'}
+    </p>
+  );
+}
+
+const MAX_PDF_SIZE_MB = 20;
+const MAX_PDF_SIZE_BYTES = MAX_PDF_SIZE_MB * 1024 * 1024;
+
+function getUploadErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data;
+    if (data?.message) return data.message;
+    if (data?.errors?.pdf) return data.errors.pdf[0];
+    if (error.response?.status === 413) return 'File is too large for the server';
+  }
+  return 'Failed to upload PDF';
+}
+
+// --- Empty state (no PDF) ---
+
+function EmptyPdfState({ templateId }: { templateId: number }) {
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadPdf(templateId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+    },
+    onError: (error) => addToast(getUploadErrorMessage(error), 'error'),
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > MAX_PDF_SIZE_BYTES) {
+      addToast(`PDF must be under ${MAX_PDF_SIZE_MB}MB`, 'error');
+      e.target.value = '';
+      return;
+    }
+    uploadMutation.mutate(file);
+  };
+
+  return (
+    <div className="flex flex-1 items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-4 rounded-lg border-2 border-dashed border-border p-12">
+        <Upload className="h-12 w-12 text-text-tertiary" />
+        <p className="text-sm text-text-secondary">Upload a PDF to start building</p>
+        <Button onClick={() => fileInputRef.current?.click()} loading={uploadMutation.isPending}>
+          Upload PDF
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          className="hidden"
+          onChange={handleFileChange}
+        />
       </div>
     </div>
   );
@@ -490,10 +728,13 @@ function OptionsEditor({ fieldId, options }: { fieldId: string; options: string[
 export default function TemplateBuilder() {
   const { id } = useParams<{ id: string }>();
   const templateId = Number(id);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
+  const addToast = useToastStore((s) => s.addToast);
   const { fields, setFields, clearFields } = useBuilderStore();
-  const [pageDimensions, setPageDimensions] = useState<Map<number, PageDimensions>>(new Map());
-  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: template, isLoading, error } = useQuery({
     queryKey: ['template', templateId],
@@ -501,7 +742,6 @@ export default function TemplateBuilder() {
     enabled: !isNaN(templateId),
   });
 
-  // Load existing fields into the builder store when template first loads
   const fieldsLoaded = useRef(false);
   useEffect(() => {
     if (template?.fields && !fieldsLoaded.current) {
@@ -516,119 +756,223 @@ export default function TemplateBuilder() {
 
   const saveMutation = useMutation({
     mutationFn: () => syncFields(templateId, fields.map(builderFieldToSync)),
-    onSuccess: (data) => {
-      setFields(data.fields.map(templateFieldToBuilderField));
-      setSaveMessage('Template saved!');
-      setTimeout(() => setSaveMessage(null), 3000);
+    onSuccess: (fields) => {
+      setFields(fields.map(templateFieldToBuilderField));
+      setSaveStatus('saved');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
     },
     onError: () => {
-      setSaveMessage('Failed to save.');
-      setTimeout(() => setSaveMessage(null), 3000);
+      setSaveStatus('error');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
     },
   });
 
-  const handlePageRender = useCallback((dims: PageDimensions) => {
-    setPageDimensions((prev) => {
-      const next = new Map(prev);
-      next.set(dims.pageNumber, dims);
-      return next;
-    });
-  }, []);
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => updateTemplate(templateId, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+    },
+    onError: () => {
+      setSaveStatus('error');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveStatus('idle'), 3000);
+    },
+  });
+
+  const descriptionMutation = useMutation({
+    mutationFn: (description: string) => updateTemplate(templateId, { description: description || undefined }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: (status: string) => updateTemplate(templateId, { status }),
+    onSuccess: (_data, newStatus) => {
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+      addToast(`Template ${newStatus === 'active' ? 'activated' : 'set to draft'}`, 'success');
+    },
+    onError: () => addToast('Failed to update status', 'error'),
+  });
+
+  const reuploadMutation = useMutation({
+    mutationFn: (file: File) => uploadPdf(templateId, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['template', templateId] });
+      addToast('PDF replaced', 'success');
+    },
+    onError: (error) => addToast(getUploadErrorMessage(error), 'error'),
+  });
+
+  const reuploadInputRef = useRef<HTMLInputElement>(null);
 
   const overlayContent = useCallback(
     (pageNumber: number) => (
       <PageDropOverlay
         pageNumber={pageNumber}
         templateId={templateId}
-        dimensions={pageDimensions.get(pageNumber)}
       />
     ),
-    [templateId, pageDimensions],
+    [templateId],
   );
 
   if (isLoading) {
-    return <div style={{ padding: '2rem', textAlign: 'center' }}>Loading template...</div>;
+    return (
+      <div className="flex h-full items-center justify-center gap-2">
+        <Spinner size="md" />
+        <span className="text-text-secondary">Loading template…</span>
+      </div>
+    );
   }
 
   if (error || !template) {
-    return <div style={{ padding: '2rem', textAlign: 'center', color: 'red' }}>Failed to load template.</div>;
+    return <div className="flex h-full items-center justify-center text-danger">Failed to load template.</div>;
   }
+
+  const hasPdf = !!template.pdf_url;
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div style={{ display: 'flex', height: '100vh', fontFamily: 'system-ui, sans-serif' }}>
+      {/* Mobile warning */}
+      <div className="flex h-full items-center justify-center p-6 text-center md:hidden">
+        <div className="space-y-2">
+          <p className="text-lg font-semibold text-text-primary">Builder works best on desktop</p>
+          <p className="text-sm text-text-secondary">
+            Please use a larger screen for the template builder.
+          </p>
+          <Button variant="secondary" onClick={() => navigate('/templates')}>
+            Back to Templates
+          </Button>
+        </div>
+      </div>
+      <div className="hidden h-full overflow-hidden md:flex">
         {/* Left Panel — Field Palette */}
-        <div
-          style={{
-            width: '200px',
-            borderRight: '1px solid #e5e7eb',
-            padding: '16px',
-            backgroundColor: '#f9fafb',
-            flexShrink: 0,
-            overflowY: 'auto',
-          }}
-        >
-          <h3 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: '#374151' }}>
-            Field Types
-          </h3>
-          {FIELD_TYPES.map((ft) => (
-            <DraggableFieldType key={ft.type} {...ft} />
-          ))}
+        <div className="flex w-[220px] shrink-0 flex-col border-r border-border bg-surface">
+          <div className="px-4 pt-4 pb-0">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+              Fields
+            </h3>
+          </div>
+          <Separator className="my-3" />
+          <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-4">
+            {FIELD_TYPES.map((ft) => (
+              <DraggableFieldType key={ft.type} {...ft} />
+            ))}
+          </div>
+          {hasPdf && template.page_count > 0 && (
+            <>
+              <Separator />
+              <div className="px-4 py-3 text-center text-xs text-text-tertiary">
+                {template.page_count} {template.page_count === 1 ? 'page' : 'pages'}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Center Panel — PDF Canvas */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '16px',
-            backgroundColor: '#e5e7eb',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-          }}
-        >
-          <div style={{ marginBottom: '12px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: '18px' }}>{template.name}</h2>
-            <button
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              style={{
-                padding: '8px 20px',
-                backgroundColor: '#2563eb',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: saveMutation.isPending ? 'not-allowed' : 'pointer',
-                fontWeight: 500,
-                opacity: saveMutation.isPending ? 0.7 : 1,
-              }}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          {/* Top bar */}
+          <div className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2.5 shrink-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/templates')}
             >
-              {saveMutation.isPending ? 'Saving...' : 'Save Template'}
-            </button>
-            {saveMessage && (
-              <span style={{ fontSize: '14px', color: saveMessage.includes('!') ? '#16a34a' : '#ef4444' }}>
-                {saveMessage}
-              </span>
-            )}
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0">
+              <EditableTitle
+                value={template.name}
+                onSave={(name) => renameMutation.mutate(name)}
+              />
+              <EditableDescription
+                value={template.description}
+                onSave={(desc) => descriptionMutation.mutate(desc)}
+              />
+            </div>
+            <div className="flex-1" />
+            <div className="flex items-center gap-2">
+              <Badge
+                variant={template.status === 'active' ? 'success' : 'warning'}
+                className="cursor-pointer select-none"
+                onClick={() =>
+                  statusMutation.mutate(template.status === 'active' ? 'draft' : 'active')
+                }
+                title={`Click to ${template.status === 'active' ? 'deactivate' : 'activate'}`}
+              >
+                {statusMutation.isPending ? '...' : template.status}
+              </Badge>
+              {hasPdf && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => reuploadInputRef.current?.click()}
+                    loading={reuploadMutation.isPending}
+                    title="Replace PDF"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Replace PDF
+                  </Button>
+                  <input
+                    ref={reuploadInputRef}
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        if (file.size > MAX_PDF_SIZE_BYTES) {
+                          addToast(`PDF must be under ${MAX_PDF_SIZE_MB}MB`, 'error');
+                        } else {
+                          reuploadMutation.mutate(file);
+                        }
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </>
+              )}
+              {saveStatus === 'saved' && (
+                <span className="flex items-center gap-1 text-xs text-success animate-in fade-in duration-200">
+                  <Check className="h-3.5 w-3.5" />
+                  Saved
+                </span>
+              )}
+              {saveStatus === 'error' && (
+                <span className="text-xs text-danger">Failed to save</span>
+              )}
+              <Button
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending}
+                loading={saveMutation.isPending}
+              >
+                <Save className="h-4 w-4" />
+                Save
+              </Button>
+            </div>
           </div>
-          <PdfViewer
-            pdfUrl={template.pdf_url ?? ''}
-            overlayContent={overlayContent}
-            onPageRenderSuccess={handlePageRender}
-          />
+
+          {/* PDF area */}
+          {hasPdf ? (
+            <div className="builder-pdf flex-1 overflow-y-auto bg-background p-6">
+              <div className="mx-auto flex flex-col items-center gap-4">
+                <PdfViewer
+                  pdfUrl={template.pdf_url ?? ''}
+                  overlayContent={overlayContent}
+                />
+              </div>
+            </div>
+          ) : (
+            <EmptyPdfState templateId={templateId} />
+          )}
         </div>
 
         {/* Right Panel — Properties */}
-        <div
-          style={{
-            width: '260px',
-            borderLeft: '1px solid #e5e7eb',
-            backgroundColor: '#f9fafb',
-            flexShrink: 0,
-            overflowY: 'auto',
-          }}
-        >
+        <div className="w-[280px] shrink-0 border-l border-border bg-surface">
           <FieldProperties />
         </div>
       </div>

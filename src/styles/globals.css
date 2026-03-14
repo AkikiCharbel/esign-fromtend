@@ -1,0 +1,83 @@
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+
+@theme {
+  --font-sans: "Geist", sans-serif;
+  --font-mono: "Geist Mono", monospace;
+
+  --color-background: oklch(9% 0 0);
+  --color-surface: oklch(12% 0 0);
+  --color-surface-raised: oklch(15% 0 0);
+  --color-surface-overlay: oklch(18% 0 0);
+  --color-border: oklch(22% 0 0);
+  --color-border-subtle: oklch(18% 0 0);
+
+  --color-text-primary: oklch(97% 0 0);
+  --color-text-secondary: oklch(65% 0 0);
+  --color-text-tertiary: oklch(45% 0 0);
+
+  --color-accent: oklch(60% 0.2 264);
+  --color-accent-hover: oklch(65% 0.2 264);
+  --color-accent-subtle: oklch(25% 0.08 264);
+
+  --color-success: oklch(72% 0.17 145);
+  --color-success-subtle: oklch(20% 0.06 145);
+  --color-warning: oklch(78% 0.17 70);
+  --color-warning-subtle: oklch(20% 0.06 70);
+  --color-danger: oklch(65% 0.22 25);
+  --color-danger-subtle: oklch(20% 0.07 25);
+
+  --color-field-indigo-bg: rgba(99, 102, 241, 0.12);
+  --color-field-indigo-border: rgb(99, 102, 241);
+  --color-field-indigo-text: rgb(129, 140, 248);
+  --color-field-amber-bg: rgba(245, 158, 11, 0.12);
+  --color-field-amber-border: rgb(245, 158, 11);
+  --color-field-amber-text: rgb(252, 191, 73);
+  --color-field-emerald-bg: rgba(16, 185, 129, 0.12);
+  --color-field-emerald-border: rgb(16, 185, 129);
+  --color-field-emerald-text: rgb(52, 211, 153);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+}
+
+/* Light theme for public-facing pages (signing, portal) */
+.theme-public {
+  --pub-bg: oklch(97% 0 0);
+  --pub-surface: oklch(100% 0 0);
+  --pub-border: oklch(90% 0 0);
+  --pub-border-subtle: oklch(93% 0 0);
+  --pub-text: oklch(15% 0 0);
+  --pub-text-secondary: oklch(40% 0 0);
+  --pub-text-tertiary: oklch(60% 0 0);
+  --pub-text-muted: oklch(75% 0 0);
+  --pub-accent: oklch(55% 0.2 264);
+  --pub-accent-hover: oklch(48% 0.2 264);
+  --pub-accent-subtle-bg: oklch(95% 0.04 264);
+  --pub-accent-subtle-border: oklch(82% 0.1 264);
+  --pub-success: oklch(55% 0.17 145);
+  --pub-warning: oklch(68% 0.17 70);
+  --pub-danger: oklch(55% 0.22 25);
+  --pub-disabled: oklch(80% 0 0);
+}
+
+/* Disable react-pdf text/annotation layer pointer events in template builder
+   so they don't intercept drag-and-drop events */
+.builder-pdf .react-pdf__Page__textContent,
+.builder-pdf .react-pdf__Page__annotations {
+  pointer-events: none !important;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-background);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

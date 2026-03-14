@@ -4,9 +4,32 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useToastStore } from '@/stores/toastStore';
+import {
+  ArrowLeft,
+  Check,
+  FileText,
+  GripVertical,
+  Plus,
+  Search,
+  UserPlus,
+  X,
+} from 'lucide-react';
 import { getTemplates } from '../../api/templates';
 import { createDocument, addSigner } from '../../api/documents';
 import type { Template } from '../../types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
+import { Badge } from '@/components/ui/Badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { StepIndicator } from '@/components/ui/StepIndicator';
+import PageHeader from '@/components/layout/PageHeader';
+import PageContent from '@/components/layout/PageContent';
+import { cn } from '@/lib/utils';
+
+const STEPS = ['Choose Template', 'Document Details', 'Add Signers'];
 
 const detailsSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -35,17 +58,21 @@ interface SignerEntry {
 
 export default function DocumentCreate() {
   const navigate = useNavigate();
-  const [step, setStep] = useState(1);
+  const addToast = useToastStore((s) => s.addToast);
+  const [step, setStep] = useState(0);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [signers, setSigners] = useState<SignerEntry[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const { data: templates, isLoading: loadingTemplates } = useQuery({
     queryKey: ['templates'],
     queryFn: getTemplates,
   });
 
-  const activeTemplates = templates?.filter((t) => t.status === 'active');
+  const activeTemplates = templates
+    ?.filter((t) => t.status === 'active')
+    .filter((t) => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   const detailsForm = useForm<DetailsForm>({
     resolver: zodResolver(detailsSchema),
@@ -82,11 +109,12 @@ export default function DocumentCreate() {
       return doc;
     },
     onSuccess: (doc) => navigate(`/documents/${doc.id}`),
+    onError: () => addToast('Failed to create document', 'error'),
   });
 
   const handleDetailsSubmit = (data: DetailsForm) => {
     detailsForm.reset(data);
-    setStep(3);
+    setStep(2);
   };
 
   const handleAddSigner = (data: SignerForm) => {
@@ -116,216 +144,264 @@ export default function DocumentCreate() {
     createMutation.mutate(detailsForm.getValues());
   };
 
-  const inputStyle: React.CSSProperties = { display: 'block', width: '100%', padding: 8, marginTop: 4, boxSizing: 'border-box' };
-  const labelStyle: React.CSSProperties = { display: 'block', marginBottom: 16, fontWeight: 500 };
+  const getTemplateBadgeVariant = (status: string) => {
+    if (status === 'active') return 'success' as const;
+    if (status === 'draft') return 'default' as const;
+    return 'default' as const;
+  };
 
   return (
-    <div style={{ padding: 24, maxWidth: 800, margin: '0 auto' }}>
-      <h1>Create Document</h1>
-
-      {/* Step indicators */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {[1, 2, 3].map((s) => (
-          <div
-            key={s}
-            style={{
-              padding: '6px 16px',
-              borderRadius: 20,
-              fontSize: 14,
-              fontWeight: step === s ? 700 : 400,
-              background: step === s ? '#2563eb' : step > s ? '#dcfce7' : '#f3f4f6',
-              color: step === s ? '#fff' : '#374151',
-            }}
-          >
-            {s === 1 ? 'Template' : s === 2 ? 'Details' : 'Signers'}
+    <div>
+      <PageHeader
+        title="Create Document"
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => navigate('/documents')}>
+            <ArrowLeft className="mr-1.5 h-4 w-4" />
+            Back
+          </Button>
+        }
+      />
+      <PageContent>
+        <div className="mx-auto max-w-3xl">
+          <div className="mb-8">
+            <StepIndicator steps={STEPS} currentStep={step} />
           </div>
-        ))}
-      </div>
 
-      {/* Step 1: Pick template */}
-      {step === 1 && (
-        <div>
-          <h2>Select a Template</h2>
-          {loadingTemplates && <p>Loading…</p>}
-          {activeTemplates && activeTemplates.length === 0 && <p>No active templates available.</p>}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-            {activeTemplates?.map((t) => (
-              <div
-                key={t.id}
-                onClick={() => {
-                  setSelectedTemplate(t);
-                  setStep(2);
-                }}
-                style={{
-                  border: selectedTemplate?.id === t.id ? '2px solid #2563eb' : '1px solid #e5e7eb',
-                  borderRadius: 8,
-                  padding: 12,
-                  cursor: 'pointer',
-                  background: selectedTemplate?.id === t.id ? '#eff6ff' : '#fff',
-                }}
-              >
-                <div style={{ height: 120, overflow: 'hidden', borderRadius: 4, marginBottom: 8, background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {t.pdf_url && (
-                    <img
-                      src={t.pdf_url.replace(/\.pdf$/, '.jpg')}
-                      alt={t.name}
-                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          {/* Step 1: Choose Template */}
+          {step === 0 && (
+            <div>
+              <div className="mb-4">
+                <Input
+                  leftIcon={Search}
+                  placeholder="Search templates..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {loadingTemplates && (
+                <p className="py-8 text-center text-text-secondary">Loading templates...</p>
+              )}
+
+              {activeTemplates && activeTemplates.length === 0 && (
+                <EmptyState
+                  icon={FileText}
+                  title="No templates found"
+                  description={searchQuery ? 'Try a different search term' : 'Create an active template first'}
+                />
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {activeTemplates?.map((t) => {
+                  const isSelected = selectedTemplate?.id === t.id;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => setSelectedTemplate(t)}
+                      className={cn(
+                        'relative cursor-pointer rounded-lg border-2 p-4 transition-colors hover:border-accent/50',
+                        isSelected ? 'border-accent bg-accent-subtle' : 'border-transparent bg-surface'
+                      )}
+                    >
+                      {isSelected && (
+                        <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent">
+                          <Check className="h-3 w-3 text-white" />
+                        </div>
+                      )}
+                      <div className="mb-3 flex h-16 items-center justify-center rounded bg-surface-raised">
+                        <FileText className="h-8 w-8 text-text-tertiary" />
+                      </div>
+                      <p className="text-sm font-medium text-text-primary">{t.name}</p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <span className="text-xs text-text-tertiary">{t.page_count} page{t.page_count !== 1 ? 's' : ''}</span>
+                        <Badge variant={getTemplateBadgeVariant(t.status)}>{t.status}</Badge>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <Button disabled={!selectedTemplate} onClick={() => setStep(1)}>
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Document Details */}
+          {step === 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Document Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={detailsForm.handleSubmit(handleDetailsSubmit)} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-text-primary">Document Name *</label>
+                    <Input
+                      {...detailsForm.register('name')}
+                      error={detailsForm.formState.errors.name?.message}
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium text-text-primary">Custom Message</label>
+                    <Textarea
+                      {...detailsForm.register('custom_message')}
+                      placeholder="Add a personal message to the recipient..."
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-text-primary">Reply-To Name</label>
+                      <Input {...detailsForm.register('reply_to_name')} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-text-primary">Reply-To Email</label>
+                      <Input
+                        type="email"
+                        {...detailsForm.register('reply_to_email')}
+                        error={detailsForm.formState.errors.reply_to_email?.message}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Attachment toggle */}
+                  <div className="flex items-center justify-between rounded-lg border border-border p-4">
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">Require Attachments</p>
+                      <p className="text-sm text-text-secondary">Ask the recipient to upload files when signing</p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer">
+                      <input
+                        type="checkbox"
+                        {...detailsForm.register('has_attachments')}
+                        className="peer sr-only"
+                      />
+                      <div className="h-5 w-9 rounded-full bg-surface-raised transition-colors peer-checked:bg-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/50 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-text-tertiary after:transition-transform peer-checked:after:translate-x-4 peer-checked:after:bg-white" />
+                    </label>
+                  </div>
+
+                  {hasAttachments && (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium text-text-primary">Attachment Instructions</label>
+                      <Textarea
+                        {...detailsForm.register('attachment_instructions')}
+                        placeholder="Describe what files the signer should upload..."
+                        rows={3}
+                      />
+                    </div>
                   )}
+
+                  <div className="flex justify-between pt-2">
+                    <Button type="button" variant="secondary" onClick={() => setStep(0)}>
+                      Back
+                    </Button>
+                    <Button type="submit">Next</Button>
+                  </div>
+                </form>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 3: Add Signers */}
+          {step === 2 && (
+            <div>
+              <form onSubmit={signerForm.handleSubmit(handleAddSigner)} className="mb-6 flex items-start gap-2">
+                <div className="flex-1">
+                  <Input
+                    placeholder="Name"
+                    {...signerForm.register('name')}
+                    error={signerForm.formState.errors.name?.message}
+                  />
                 </div>
-                <p style={{ margin: 0, fontWeight: 500 }}>{t.name}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+                <div className="flex-1">
+                  <Input
+                    placeholder="Email"
+                    type="email"
+                    {...signerForm.register('email')}
+                    error={signerForm.formState.errors.email?.message}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Input
+                    placeholder="Role"
+                    {...signerForm.register('role')}
+                    error={signerForm.formState.errors.role?.message}
+                  />
+                </div>
+                <Button type="submit" size="icon" variant="secondary">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </form>
 
-      {/* Step 2: Details */}
-      {step === 2 && (
-        <div>
-          <h2>Document Details</h2>
-          <form onSubmit={detailsForm.handleSubmit(handleDetailsSubmit)}>
-            <label style={labelStyle}>
-              Name *
-              <input {...detailsForm.register('name')} style={inputStyle} />
-              {detailsForm.formState.errors.name && (
-                <span style={{ color: 'red', fontSize: 13 }}>{detailsForm.formState.errors.name.message}</span>
+              {signers.length === 0 ? (
+                <EmptyState
+                  icon={UserPlus}
+                  title="No signers added yet"
+                  description="Add at least one signer to create the document"
+                  className="py-12"
+                />
+              ) : (
+                <div className="mb-6 space-y-1.5">
+                  {signers.map((signer, i) => (
+                    <div
+                      key={i}
+                      draggable
+                      onDragStart={() => handleDragStart(i)}
+                      onDragOver={(e) => handleDragOver(e, i)}
+                      onDragEnd={handleDragEnd}
+                      className={cn(
+                        'flex items-center gap-3 rounded-lg border px-3 py-2.5',
+                        dragIndex === i ? 'border-accent bg-accent-subtle' : 'border-border bg-surface'
+                      )}
+                    >
+                      <GripVertical className="h-4 w-4 cursor-grab text-text-tertiary" />
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-subtle text-xs font-semibold text-accent">
+                        {signer.name.charAt(0).toUpperCase()}
+                      </div>
+                      <span className="flex-1 text-sm font-medium text-text-primary">{signer.name}</span>
+                      <span className="text-sm text-text-secondary">{signer.email}</span>
+                      <Badge variant="outline">{signer.role}</Badge>
+                      <Badge variant="default">#{i + 1}</Badge>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleRemoveSigner(i)}
+                        className="h-7 w-7"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               )}
-            </label>
 
-            <label style={labelStyle}>
-              Custom Message
-              <textarea {...detailsForm.register('custom_message')} rows={3} style={inputStyle} />
-            </label>
-
-            <label style={labelStyle}>
-              Reply-to Email
-              <input type="email" {...detailsForm.register('reply_to_email')} style={inputStyle} />
-              {detailsForm.formState.errors.reply_to_email && (
-                <span style={{ color: 'red', fontSize: 13 }}>{detailsForm.formState.errors.reply_to_email.message}</span>
-              )}
-            </label>
-
-            <label style={labelStyle}>
-              Reply-to Name
-              <input {...detailsForm.register('reply_to_name')} style={inputStyle} />
-            </label>
-
-            <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" {...detailsForm.register('has_attachments')} />
-              Require Attachments
-            </label>
-
-            {hasAttachments && (
-              <label style={labelStyle}>
-                Attachment Instructions
-                <textarea {...detailsForm.register('attachment_instructions')} rows={3} style={inputStyle} />
-              </label>
-            )}
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => setStep(1)} style={{ padding: '8px 16px' }}>
-                Back
-              </button>
-              <button type="submit" style={{ padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6 }}>
-                Next
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Step 3: Signers */}
-      {step === 3 && (
-        <div>
-          <h2>Add Signers</h2>
-
-          <form onSubmit={signerForm.handleSubmit(handleAddSigner)} style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-            <div>
-              <input placeholder="Name" {...signerForm.register('name')} style={{ padding: 8 }} />
-              {signerForm.formState.errors.name && (
-                <div style={{ color: 'red', fontSize: 13 }}>{signerForm.formState.errors.name.message}</div>
-              )}
-            </div>
-            <div>
-              <input placeholder="Email" type="email" {...signerForm.register('email')} style={{ padding: 8 }} />
-              {signerForm.formState.errors.email && (
-                <div style={{ color: 'red', fontSize: 13 }}>{signerForm.formState.errors.email.message}</div>
-              )}
-            </div>
-            <div>
-              <input placeholder="Role" {...signerForm.register('role')} style={{ padding: 8 }} />
-              {signerForm.formState.errors.role && (
-                <div style={{ color: 'red', fontSize: 13 }}>{signerForm.formState.errors.role.message}</div>
-              )}
-            </div>
-            <button type="submit" style={{ padding: '8px 16px' }}>Add</button>
-          </form>
-
-          {signers.length === 0 && <p style={{ color: '#6b7280' }}>No signers added yet.</p>}
-
-          <div style={{ marginBottom: 24 }}>
-            {signers.map((signer, i) => (
-              <div
-                key={i}
-                draggable
-                onDragStart={() => handleDragStart(i)}
-                onDragOver={(e) => handleDragOver(e, i)}
-                onDragEnd={handleDragEnd}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '8px 12px',
-                  marginBottom: 4,
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 6,
-                  background: dragIndex === i ? '#eff6ff' : '#fff',
-                  cursor: 'grab',
-                }}
-              >
-                <span style={{ color: '#9ca3af', fontWeight: 700 }}>{i + 1}</span>
-                <span style={{ flex: 1 }}>{signer.name}</span>
-                <span style={{ color: '#6b7280' }}>{signer.email}</span>
-                <span style={{ padding: '2px 8px', background: '#f3f4f6', borderRadius: 12, fontSize: 12 }}>{signer.role}</span>
-                <button
+              <div className="flex justify-between">
+                <Button type="button" variant="secondary" onClick={() => setStep(1)}>
+                  Back
+                </Button>
+                <Button
                   type="button"
-                  onClick={() => handleRemoveSigner(i)}
-                  style={{ background: 'none', border: 'none', color: 'red', cursor: 'pointer', fontSize: 16 }}
+                  onClick={handleCreate}
+                  disabled={signers.length === 0 || createMutation.isPending}
+                  loading={createMutation.isPending}
                 >
-                  &times;
-                </button>
+                  Create Document
+                </Button>
               </div>
-            ))}
-          </div>
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button type="button" onClick={() => setStep(2)} style={{ padding: '8px 16px' }}>
-              Back
-            </button>
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={signers.length === 0 || createMutation.isPending}
-              style={{
-                padding: '8px 16px',
-                background: signers.length === 0 ? '#9ca3af' : '#2563eb',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 6,
-                cursor: signers.length === 0 ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {createMutation.isPending ? 'Creating…' : 'Create Document'}
-            </button>
-          </div>
-
-          {createMutation.isError && (
-            <p style={{ color: 'red', marginTop: 8 }}>Failed to create document. Please try again.</p>
+              {createMutation.isError && (
+                <p className="mt-3 text-sm text-danger">Failed to create document. Please try again.</p>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </PageContent>
     </div>
   );
 }

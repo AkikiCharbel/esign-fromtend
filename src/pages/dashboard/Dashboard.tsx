@@ -1,23 +1,92 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { Send, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { getDashboardStats, getRecentSubmissions } from '../../api/dashboard';
 import type { DashboardStats } from '../../types';
+import PageHeader from '@/components/layout/PageHeader';
+import PageContent from '@/components/layout/PageContent';
+import { Card } from '@/components/ui/Card';
+import { Badge, getSubmissionBadgeVariant } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/Table';
 
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  pending: { bg: '#fef3c7', color: '#92400e' },
-  sent: { bg: '#dbeafe', color: '#1e40af' },
-  viewed: { bg: '#e0e7ff', color: '#3730a3' },
-  signed: { bg: '#dcfce7', color: '#166534' },
-  expired: { bg: '#fee2e2', color: '#991b1b' },
-  declined: { bg: '#fecaca', color: '#991b1b' },
-};
+interface StatCardConfig {
+  key: keyof DashboardStats;
+  label: string;
+  icon: LucideIcon;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+}
 
-const STAT_CARDS: { key: keyof DashboardStats; label: string; color: string }[] = [
-  { key: 'total_sent', label: 'Total Sent', color: '#2563eb' },
-  { key: 'pending', label: 'Pending', color: '#d97706' },
-  { key: 'signed_this_week', label: 'Signed This Week', color: '#16a34a' },
-  { key: 'expired', label: 'Expired', color: '#ef4444' },
+const STAT_CARDS: StatCardConfig[] = [
+  {
+    key: 'awaiting_signature',
+    label: 'Awaiting Signature',
+    icon: Send,
+    color: 'text-accent',
+    bgColor: 'bg-accent-subtle',
+    borderColor: 'border-accent/30',
+  },
+  {
+    key: 'pending',
+    label: 'Pending',
+    icon: Clock,
+    color: 'text-warning',
+    bgColor: 'bg-warning-subtle',
+    borderColor: 'border-warning/30',
+  },
+  {
+    key: 'signed_this_week',
+    label: 'Signed This Week',
+    icon: CheckCircle,
+    color: 'text-success',
+    bgColor: 'bg-success-subtle',
+    borderColor: 'border-success/30',
+  },
+  {
+    key: 'expired',
+    label: 'Expired',
+    icon: AlertCircle,
+    color: 'text-danger',
+    bgColor: 'bg-danger-subtle',
+    borderColor: 'border-danger/30',
+  },
 ];
+
+function StatCardSkeleton() {
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between">
+        <div className="h-10 w-10 animate-pulse rounded-lg bg-surface-raised" />
+      </div>
+      <div className="mt-4 h-8 w-16 animate-pulse rounded bg-surface-raised" />
+      <div className="mt-2 h-4 w-24 animate-pulse rounded bg-surface-raised" />
+      <div className="mt-4 h-px w-full animate-pulse rounded bg-surface-raised" />
+    </Card>
+  );
+}
+
+function TableRowSkeleton() {
+  return (
+    <TableRow>
+      <TableCell><div className="h-4 w-28 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-4 w-36 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-4 w-20 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-7 w-12 animate-pulse rounded bg-surface-raised" /></TableCell>
+    </TableRow>
+  );
+}
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -34,98 +103,123 @@ export default function Dashboard() {
 
   if (statsError && recentError) {
     return (
-      <div style={{ padding: 24 }}>
-        <h1 style={{ margin: '0 0 24px', fontSize: 24 }}>Dashboard</h1>
-        <p style={{ color: '#ef4444' }}>Failed to load dashboard data. Please try again later.</p>
-      </div>
+      <>
+        <PageHeader title="Dashboard" />
+        <PageContent>
+          <p className="text-danger">Failed to load dashboard data. Please try again later.</p>
+        </PageContent>
+      </>
     );
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ margin: '0 0 24px', fontSize: 24 }}>Dashboard</h1>
+    <>
+      <PageHeader title="Dashboard" />
+      <PageContent>
+        {/* Stat cards */}
+        {statsError ? (
+          <p className="mb-8 text-danger">Failed to load stats.</p>
+        ) : (
+          <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {statsLoading
+              ? Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+              : STAT_CARDS.map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <Card key={card.key} className={`p-5 border-b-2 ${card.borderColor}`}>
+                      <div className="flex items-start justify-between">
+                        <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${card.bgColor}`}>
+                          <Icon className={`h-5 w-5 ${card.color}`} />
+                        </div>
+                      </div>
+                      <p className={`mt-4 font-mono text-3xl font-semibold ${card.color}`}>
+                        {stats?.[card.key] ?? 0}
+                      </p>
+                      <p className="mt-1 text-sm text-text-secondary">{card.label}</p>
+                      <div className={`mt-4 border-b ${card.borderColor}`} />
+                    </Card>
+                  );
+                })}
+          </div>
+        )}
 
-      {/* Stat cards */}
-      {statsError ? (
-        <p style={{ color: '#ef4444', marginBottom: 32 }}>Failed to load stats.</p>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, marginBottom: 32 }}>
-          {STAT_CARDS.map((card) => {
-            const value = statsLoading ? '—' : (stats?.[card.key] ?? 0);
-            return (
-              <div
-                key={card.key}
-                style={{
-                  padding: 20,
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 8,
-                }}
-              >
-                <p style={{ margin: '0 0 4px', fontSize: 13, color: '#6b7280' }}>{card.label}</p>
-                <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: card.color }}>{value}</p>
-              </div>
-            );
-          })}
-        </div>
-      )}
+        {/* Recent submissions */}
+        <h2 className="mb-4 text-lg font-semibold text-text-primary">Recent Submissions</h2>
 
-      {/* Recent submissions */}
-      <h2 style={{ margin: '0 0 16px', fontSize: 18 }}>Recent Submissions</h2>
+        {recentError && <p className="text-danger">Failed to load recent submissions.</p>}
 
-      {recentError && <p style={{ color: '#ef4444' }}>Failed to load recent submissions.</p>}
-      {recentLoading && <p style={{ color: '#6b7280' }}>Loading...</p>}
+        {recentLoading && (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Document</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <TableRowSkeleton key={i} />
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
 
-      {recentSubmissions && recentSubmissions.length === 0 && (
-        <p style={{ color: '#6b7280' }}>No submissions yet.</p>
-      )}
+        {recentSubmissions && recentSubmissions.length === 0 && (
+          <Card>
+            <EmptyState
+              icon={Send}
+              title="No submissions yet"
+              description="Send your first document to get started"
+            />
+          </Card>
+        )}
 
-      {recentSubmissions && recentSubmissions.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
-              <th style={{ padding: '8px 12px' }}>Recipient</th>
-              <th style={{ padding: '8px 12px' }}>Document</th>
-              <th style={{ padding: '8px 12px' }}>Status</th>
-              <th style={{ padding: '8px 12px' }}>Sent</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recentSubmissions.map((sub) => {
-              const statusStyle = STATUS_COLORS[sub.status] ?? { bg: '#f3f4f6', color: '#374151' };
-              return (
-                <tr
-                  key={sub.id}
-                  onClick={() => navigate(`/submissions/${sub.id}`)}
-                  style={{ borderBottom: '1px solid #e5e7eb', cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '')}
-                >
-                  <td style={{ padding: '10px 12px', fontWeight: 500 }}>{sub.recipient_name}</td>
-                  <td style={{ padding: '10px 12px' }}>{sub.document?.name ?? '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span
-                      style={{
-                        padding: '2px 10px',
-                        borderRadius: 12,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                      }}
-                    >
-                      {sub.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#6b7280' }}>
-                    {sub.sent_at ? new Date(sub.sent_at).toLocaleDateString() : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
+        {recentSubmissions && recentSubmissions.length > 0 && (
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Recipient</TableHead>
+                  <TableHead>Document</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Sent</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentSubmissions.map((sub) => (
+                  <TableRow key={sub.id}>
+                    <TableCell className="font-medium text-text-primary">{sub.recipient_name}</TableCell>
+                    <TableCell>{sub.document?.name ?? '\u2014'}</TableCell>
+                    <TableCell>
+                      <Badge variant={getSubmissionBadgeVariant(sub.status)}>
+                        {sub.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {sub.sent_at ? new Date(sub.sent_at).toLocaleDateString() : '\u2014'}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/submissions/${sub.id}`)}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
+      </PageContent>
+    </>
   );
 }

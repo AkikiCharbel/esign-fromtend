@@ -2,16 +2,19 @@ import client from './client';
 import type { Template, TemplateField } from '../types';
 
 export const getTemplates = () =>
-  client.get<Template[]>('/templates').then((r) => r.data);
+  client.get('/templates').then((r) => {
+    const payload = r.data;
+    return (Array.isArray(payload) ? payload : payload.data) as Template[];
+  });
 
 export const getTemplate = (id: number) =>
-  client.get<Template>(`/templates/${id}`).then((r) => r.data);
+  client.get<{ data: Template }>(`/templates/${id}`).then((r) => r.data.data);
 
 export const createTemplate = (data: { name: string; description?: string }) =>
-  client.post<Template>('/templates', data).then((r) => r.data);
+  client.post<{ data: Template }>('/templates', data).then((r) => r.data.data);
 
 export const updateTemplate = (id: number, data: { name?: string; description?: string; status?: string }) =>
-  client.patch<Template>(`/templates/${id}`, data).then((r) => r.data);
+  client.patch<{ data: Template }>(`/templates/${id}`, data).then((r) => r.data.data);
 
 export const deleteTemplate = (id: number) =>
   client.delete(`/templates/${id}`).then((r) => r.data);
@@ -24,5 +27,7 @@ export const uploadPdf = (id: number, file: File) => {
   }).then((r) => r.data);
 };
 
-export const syncFields = (id: number, fields: Omit<TemplateField, 'id' | 'template_id' | 'created_at' | 'updated_at'>[]) =>
-  client.put<{ fields: TemplateField[] }>(`/templates/${id}/fields/sync`, { fields }).then((r) => r.data);
+type SyncFieldPayload = Omit<TemplateField, 'id' | 'template_id' | 'created_at' | 'updated_at'> & { id?: number };
+
+export const syncFields = (id: number, fields: SyncFieldPayload[]) =>
+  client.put<{ data: TemplateField[] }>(`/templates/${id}/fields/sync`, { fields }).then((r) => r.data.data);

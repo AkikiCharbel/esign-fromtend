@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
-export const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:8000/api';
+export const API_BASE_URL = (import.meta.env.VITE_API_URL as string) || 'http://backend.test/api';
 
 const client = axios.create({
   baseURL: API_BASE_URL,
@@ -28,5 +28,16 @@ client.interceptors.response.use(
     return Promise.reject(error);
   },
 );
+
+/** Axios instance for public (unauthenticated) endpoints — no auth interceptor, no 401 redirect */
+export const publicClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  },
+});
+
+export { axios };
 
 export default client;

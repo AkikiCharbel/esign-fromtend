@@ -1,23 +1,86 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { getSubmissions } from '../../api/submissions';
+import { Search, Send, Upload, MoreHorizontal, Eye, RefreshCw, Link } from 'lucide-react';
+import { getSubmissions, resendSubmission } from '../../api/submissions';
+import PageHeader from '@/components/layout/PageHeader';
+import PageContent from '@/components/layout/PageContent';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/Input';
+import { Badge, getSubmissionBadgeVariant } from '@/components/ui/Badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/Table';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { Tooltip } from '@/components/ui/tooltip';
+import { useToastStore } from '@/stores/toastStore';
+import { cn } from '@/lib/utils';
+import BulkSendModal from '@/components/BulkSendModal';
 
-const STATUS_OPTIONS = ['all', 'pending', 'sent', 'viewed', 'signed', 'expired', 'declined'];
+const STATUS_FILTERS = ['all', 'draft', 'sent', 'pending', 'questions', 'signed'] as const;
 
-const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
-  pending: { bg: '#fef3c7', color: '#92400e' },
-  sent: { bg: '#dbeafe', color: '#1e40af' },
-  viewed: { bg: '#e0e7ff', color: '#3730a3' },
-  signed: { bg: '#dcfce7', color: '#166534' },
-  expired: { bg: '#fee2e2', color: '#991b1b' },
-  declined: { bg: '#fecaca', color: '#991b1b' },
-};
+function relativeTime(dateStr: string): string {
+  const now = Date.now();
+  const diff = now - new Date(dateStr).getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days} day${days !== 1 ? 's' : ''} ago`;
+  if (hours > 0) return `${hours} hour${hours !== 1 ? 's' : ''} ago`;
+  if (minutes > 0) return `${minutes} min${minutes !== 1 ? 's' : ''} ago`;
+  return 'just now';
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function SkeletonRow() {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 animate-pulse rounded-full bg-surface-raised" />
+          <div className="space-y-1.5">
+            <div className="h-3.5 w-28 animate-pulse rounded bg-surface-raised" />
+            <div className="h-3 w-36 animate-pulse rounded bg-surface-raised" />
+          </div>
+        </div>
+      </TableCell>
+      <TableCell><div className="h-3.5 w-32 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-5 w-16 animate-pulse rounded-full bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-3.5 w-20 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-3.5 w-20 animate-pulse rounded bg-surface-raised" /></TableCell>
+      <TableCell><div className="h-7 w-7 animate-pulse rounded bg-surface-raised" /></TableCell>
+    </TableRow>
+  );
+}
 
 export default function SubmissionIndex() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('all');
+  const queryClient = useQueryClient();
+  const addToast = useToastStore((s) => s.addToast);
+  const [status, setStatus] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [showBulkSend, setShowBulkSend] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceRef = useMemo(() => ({ timer: null as ReturnType<typeof setTimeout> | null }), []);
 
@@ -42,121 +105,227 @@ export default function SubmissionIndex() {
     queryFn: () => getSubmissions(Object.keys(filters).length > 0 ? filters : undefined),
   });
 
-  if (error) return <p style={{ padding: 24, color: 'red' }}>Failed to load submissions.</p>;
+  const hasActiveFilters = status !== 'all' || debouncedSearch !== '';
+
+  const clearFilters = () => {
+    setStatus('all');
+    setSearch('');
+    setDebouncedSearch('');
+  };
+
+  const resendMutation = useMutation({
+    mutationFn: resendSubmission,
+    onSuccess: () => {
+      addToast('Reminder sent', 'success');
+      queryClient.invalidateQueries({ queryKey: ['submissions'] });
+    },
+    onError: () => {
+      addToast('Failed to resend email', 'error');
+    },
+  });
+
+  const handleCopyLink = (token: string) => {
+    const url = `${window.location.origin}/public/esign/${token}`;
+    navigator.clipboard.writeText(url);
+    addToast('Signing link copied', 'success');
+  };
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ margin: '0 0 24px' }}>Submissions</h1>
+    <>
+      <PageHeader
+        title="Submissions"
+        actions={
+          <Button variant="secondary" onClick={() => setShowBulkSend(true)}>
+            <Upload className="h-4 w-4" />
+            Bulk Send
+          </Button>
+        }
+      />
+      <PageContent>
+        {error && <p className="text-danger">Failed to load submissions.</p>}
 
-      {/* Filter bar */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid #d1d5db',
-            borderRadius: 6,
-            fontSize: 14,
-            background: '#fff',
-          }}
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s === 'all' ? 'All Statuses' : s.charAt(0).toUpperCase() + s.slice(1)}
-            </option>
-          ))}
-        </select>
+        {/* Filter bar */}
+        <div className="sticky top-0 z-10 -mx-6 mb-4 flex flex-wrap items-center gap-3 bg-background px-6 py-3">
+          <div className="w-64">
+            <Input
+              leftIcon={Search}
+              placeholder="Search recipient..."
+              value={search}
+              onChange={(e) => handleSearchChange(e.target.value)}
+            />
+          </div>
 
-        <input
-          type="text"
-          placeholder="Search by name or email..."
-          value={search}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          style={{
-            padding: '8px 12px',
-            border: '1px solid #d1d5db',
-            borderRadius: 6,
-            fontSize: 14,
-            flex: 1,
-            maxWidth: 360,
-          }}
-        />
-      </div>
+          <div className="flex items-center gap-1 rounded-lg border border-border p-1">
+            {STATUS_FILTERS.map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                aria-current={status === s ? 'true' : undefined}
+                className={cn(
+                  'rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors',
+                  status === s
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-text-secondary hover:bg-surface-raised hover:text-text-primary'
+                )}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
 
-      {isLoading && <p>Loading submissions...</p>}
+          <span className="ml-auto text-sm text-text-secondary">
+            {submissions ? `${submissions.length} submission${submissions.length !== 1 ? 's' : ''}` : ''}
+          </span>
+        </div>
 
-      {submissions && submissions.length === 0 && <p style={{ color: '#6b7280' }}>No submissions found.</p>}
+        {/* Loading skeleton */}
+        {isLoading && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recipient</TableHead>
+                <TableHead>Document</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Sent</TableHead>
+                <TableHead>Signed</TableHead>
+                <TableHead className="w-[50px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonRow key={i} />
+              ))}
+            </TableBody>
+          </Table>
+        )}
 
-      {submissions && submissions.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #e5e7eb', textAlign: 'left' }}>
-              <th style={{ padding: '8px 12px' }}>Recipient</th>
-              <th style={{ padding: '8px 12px' }}>Email</th>
-              <th style={{ padding: '8px 12px' }}>Document</th>
-              <th style={{ padding: '8px 12px' }}>Status</th>
-              <th style={{ padding: '8px 12px' }}>Sent At</th>
-              <th style={{ padding: '8px 12px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {submissions.map((sub) => {
-              const statusStyle = STATUS_COLORS[sub.status] ?? { bg: '#f3f4f6', color: '#374151' };
-              return (
-                <tr
+        {/* Empty state */}
+        {submissions && submissions.length === 0 && (
+          <EmptyState
+            icon={Send}
+            title="No submissions found"
+            description={hasActiveFilters ? 'Try adjusting your filters' : 'Send a document to get started'}
+            action={
+              hasActiveFilters ? (
+                <Button variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              ) : undefined
+            }
+          />
+        )}
+
+        {/* Table */}
+        {submissions && submissions.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Recipient</TableHead>
+                <TableHead>Document</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Sent</TableHead>
+                <TableHead>Signed</TableHead>
+                <TableHead className="w-[50px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {submissions.map((sub) => (
+                <TableRow
                   key={sub.id}
                   onClick={() => navigate(`/submissions/${sub.id}`)}
-                  style={{ borderBottom: '1px solid #e5e7eb', cursor: 'pointer' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f9fafb')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '')}
                 >
-                  <td style={{ padding: '10px 12px', fontWeight: 500 }}>{sub.recipient_name}</td>
-                  <td style={{ padding: '10px 12px', color: '#6b7280' }}>{sub.recipient_email}</td>
-                  <td style={{ padding: '10px 12px' }}>{sub.document?.name ?? '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span
-                      style={{
-                        padding: '2px 10px',
-                        borderRadius: 12,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background: statusStyle.bg,
-                        color: statusStyle.color,
-                      }}
-                    >
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/15 text-xs font-semibold text-accent">
+                        {getInitials(sub.recipient_name)}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium text-text-primary">
+                          {sub.recipient_name}
+                        </div>
+                        <div className="truncate text-xs text-text-secondary">
+                          {sub.recipient_email}
+                        </div>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell>{sub.document?.name ?? '—'}</TableCell>
+                  <TableCell>
+                    <Badge variant={getSubmissionBadgeVariant(sub.status)}>
                       {sub.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#6b7280' }}>
-                    {sub.sent_at ? new Date(sub.sent_at).toLocaleDateString() : '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/submissions/${sub.id}`);
-                      }}
-                      style={{
-                        padding: '4px 12px',
-                        background: '#2563eb',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                      }}
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
-    </div>
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    {sub.sent_at ? (
+                      <Tooltip content={new Date(sub.sent_at).toLocaleString()}>
+                        <span className="text-text-secondary">{relativeTime(sub.sent_at)}</span>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-text-tertiary">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {sub.signed_at ? (
+                      <Tooltip content={new Date(sub.signed_at).toLocaleString()}>
+                        <span className="text-text-secondary">{relativeTime(sub.signed_at)}</span>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-text-tertiary">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/submissions/${sub.id}`);
+                          }}
+                        >
+                          <Eye className="h-4 w-4" />
+                          View Details
+                        </DropdownMenuItem>
+                        {(sub.status === 'sent' || sub.status === 'pending') && (
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resendMutation.mutate(sub.id);
+                            }}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                            Resend Email
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyLink(sub.token);
+                          }}
+                        >
+                          <Link className="h-4 w-4" />
+                          Copy signing link
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </PageContent>
+      {showBulkSend && <BulkSendModal onClose={() => setShowBulkSend(false)} />}
+    </>
   );
 }

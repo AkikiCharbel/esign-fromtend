@@ -70,7 +70,10 @@ export function templateFieldToBuilderField(field: TemplateField): BuilderField 
 }
 
 export function builderFieldToSync(field: BuilderField) {
+  const numericId = Number(field.id);
   return {
+    // Include id for existing fields (numeric), omit for new ones (client-generated UUIDs)
+    ...(Number.isFinite(numericId) && numericId > 0 ? { id: numericId } : {}),
     page: field.page,
     type: field.type,
     label: field.label,

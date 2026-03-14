@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
+import { Spinner } from '@/components/ui/Spinner';
+import { AlertTriangle } from 'lucide-react';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -57,14 +59,17 @@ export default function PdfViewer({
   return (
     <div>
       {loading && (
-        <div style={{ padding: '2rem', textAlign: 'center' }}>
-          Loading PDF…
+        <div className="flex items-center justify-center gap-2 py-8">
+          <Spinner size="md" />
+          <span className="text-sm text-text-secondary">Loading PDF…</span>
         </div>
       )}
 
       {error && (
-        <div style={{ padding: '2rem', textAlign: 'center', color: 'red' }}>
-          Error: {error}
+        <div className="mx-auto max-w-sm rounded-lg border border-danger/30 bg-danger-subtle p-4 text-center">
+          <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-danger" />
+          <p className="text-sm font-medium text-danger">Failed to load PDF</p>
+          <p className="mt-1 text-xs text-text-secondary">{error}</p>
         </div>
       )}
 
@@ -84,16 +89,7 @@ export default function PdfViewer({
               onRenderSuccess={handlePageRenderSuccess}
             />
             {overlayContent && (
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  pointerEvents: 'none',
-                }}
-              >
+              <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10, pointerEvents: 'none' }}>
                 {overlayContent(pageNumber)}
               </div>
             )}

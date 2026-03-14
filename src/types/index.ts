@@ -3,6 +3,7 @@ export interface Tenant {
   name: string;
   slug: string;
   settings: Record<string, unknown> | null;
+  logo_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,6 +102,7 @@ export interface Submission {
   viewed_at: string | null;
   signed_at: string | null;
   expires_at: string | null;
+  signed_pdf_url: string | null;
   document?: Document;
   field_values?: SubmissionFieldValue[];
   audit_logs?: AuditLog[];
@@ -114,7 +116,7 @@ export interface SubmissionFieldValue {
   submission_id: number;
   template_field_id: number;
   value: string;
-  template_field?: TemplateField;
+  field?: TemplateField;
   created_at: string;
   updated_at: string;
 }
@@ -139,9 +141,42 @@ export interface Media {
   updated_at: string;
 }
 
+export interface Member {
+  id: number;
+  name: string;
+  email: string;
+  role: 'admin' | 'staff' | 'viewer';
+  joined_at: string;
+  avatar_url: string | null;
+}
+
+export interface WorkspaceInvitation {
+  id: number;
+  email: string;
+  role: 'staff' | 'viewer';
+  accepted_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  inviter?: User;
+}
+
+export interface InvitationPreview {
+  workspace_name: string;
+  invited_by_name: string;
+  email: string;
+  role: string;
+  expires_at: string | null;
+  is_expired: boolean;
+  is_accepted: boolean;
+}
+
 export interface DashboardStats {
-  total_sent: number;
+  awaiting_signature: number;
   pending: number;
   signed_this_week: number;
   expired: number;
+}
+
+export interface DashboardResponse extends DashboardStats {
+  recent_submissions: Submission[];
 }

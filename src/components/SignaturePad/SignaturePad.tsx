@@ -26,18 +26,11 @@ export default function SignaturePad({ onAccept, onClear, width = 300, height = 
   return (
     <div>
       {label && (
-        <div style={{ marginBottom: 4, fontSize: 12, fontWeight: 500, color: '#374151' }}>
+        <div className="mb-1 text-xs font-medium text-text-secondary">
           {label}
         </div>
       )}
-      <div
-        style={{
-          border: '1px solid #d1d5db',
-          borderRadius: 4,
-          background: '#fff',
-          display: 'inline-block',
-        }}
-      >
+      <div className="inline-block rounded border border-border bg-surface">
         <SignatureCanvas
           ref={sigRef}
           canvasProps={{
@@ -47,34 +40,18 @@ export default function SignaturePad({ onAccept, onClear, width = 300, height = 
           }}
         />
       </div>
-      <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+      <div className="mt-2 flex gap-2">
         <button
           type="button"
           onClick={handleClear}
-          style={{
-            padding: '6px 14px',
-            fontSize: 13,
-            background: '#f3f4f6',
-            border: '1px solid #d1d5db',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
+          className="cursor-pointer rounded border border-border bg-surface-raised px-3.5 py-1.5 text-[13px] text-text-secondary transition-colors hover:bg-surface-overlay"
         >
           Clear
         </button>
         <button
           type="button"
           onClick={handleAccept}
-          style={{
-            padding: '6px 14px',
-            fontSize: 13,
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
+          className="cursor-pointer rounded border-none bg-accent px-3.5 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-accent-hover"
         >
           Accept
         </button>
